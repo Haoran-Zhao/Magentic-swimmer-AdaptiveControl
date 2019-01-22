@@ -13,6 +13,7 @@ w2o = interp1(1:numel(wp(:,1)),wp,1:smallnumber:numel(wp(:,1)),'spline');
 w2 = w2o(1:2,:);
 c1 = 2;
 c2 = 1;
+u = [0 0 0];
 spacingDist = 0.5; % in mm.  Make smaller to get more points
 var = 0.5;
 % length = 0;
@@ -46,7 +47,7 @@ mg = 50; %mm/s^2
 Dt = 0.02; %seconds
 Kp = 1;
 Kd = 0;
-Ki = 0;
+Ki = 0.01;
 Drag = 0.9;
 Speed  = 100; %mm/s
 %learningRate = 0.25;
@@ -80,6 +81,10 @@ plot3(w2(:,1),w2(:,2),w2(:,3),'linewidth',.1 );
 hold on
 plot3(wp(:,1),wp(:,2),wp(:,3),'.k' );
 hILC = plot3(w2ILC(:,1),w2ILC(:,2),w2ILC(:,3),'m','linewidth',.5 );
+hrpath1 = plot3(X(1,1),X(2,1),X(3,1),'r','linewidth',1);
+hrobot1 = plot3(X(1,1),X(2,1),X(3,1),'ro','linewidth',1);
+hdirect = quiver3(X(1,1),X(2,1),X(3,1), u(1), u(2), u(3));
+
 
 subplot(2,2,3);
 herr = plot(Dt*(1:iters),error,'linewidth',1);
@@ -156,7 +161,11 @@ for i = 1: iters-1
         ind = ind-size(wp,1);
     end
     
-    wpDiff = w2(ind+1,:)'-w2(ind,:)'; %direction between waypoints
+    if ind == 539
+        wpDiff = w2ILC(1,:)'-w2ILC(ind,:)';
+    else
+        wpDiff = w2ILC(ind+1,:)'-w2ILC(ind,:)'; %direction between waypoints
+    end
     
     errInt = errInt+ (cp - X(1:3,i)); %integral term
     
@@ -169,6 +178,7 @@ for i = 1: iters-1
     
     control =  Kp*(cp - X(1:3,i)) + Ki*errInt - Kd*vel  +  2*wpDiff/norm(wpDiff);
     % controller steers the thrust (only controls the orientation)
+    disp(control/norm(control))
     u = Speed*control/norm(control);
     
     
@@ -183,8 +193,11 @@ for i = 1: iters-1
     
     %update
     if mod(i,20) ==0
+        set( hdirect,  'Xdata', X(1,i),'Ydata',X(2,i),'Zdata',X(3,i),'Udata',0.2*u(1),'Vdata',0.2*u(2),'Wdata',0.2*u(3));
         set( hrpath,  'Xdata', X(1,1:i),'Ydata',X(2,1:i),'Zdata',X(3,1:i));
         set( hrobot, 'Xdata',X(1,i),'Ydata',X(2,i),'Zdata',X(3,i));
+        set( hrpath1,  'Xdata', X(1,1:i),'Ydata',X(2,1:i),'Zdata',X(3,1:i));
+        set( hrobot1, 'Xdata',X(1,i),'Ydata',X(2,i),'Zdata',X(3,i));
         set( hnear, 'Xdata',wp(ind,1),'Ydata',wp(ind,2),'Zdata',wp(ind,3));
         set( hILC, 'Xdata',[w2ILC(:,1);w2ILC(1,1)],'Ydata',[w2ILC(:,2);w2ILC(1,2)],'Zdata',[w2ILC(:,3);w2ILC(1,3)] );
         set(htit,'String',num2str(i));
@@ -192,9 +205,7 @@ for i = 1: iters-1
         set(herr_h,'Ydata',error_h);
         drawnow
     end
-    if ~mod(iters,1000)==0
-        pause(1)
-    end
+pause(0.005)
 end
 
 
