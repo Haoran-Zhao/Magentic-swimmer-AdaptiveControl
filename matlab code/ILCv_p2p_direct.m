@@ -70,16 +70,12 @@ error_p = [0 0 0]';
 error_c = [0 0 0]';
 error_d = NaN;
 error_direct = zeros(size(wp,1),3);
-p2c_list = NaN.*ones(size(wp,1),iters,3);
 error = NaN*ones(iters,1);
 error_h = NaN*ones(iters,1);
 error_list = NaN*ones(size(wp,1),100);
 error_ind = ones(size(wp,1),1);
 subplot(2,2,2);
-plot3(w2(:,1),w2(:,2),w2(:,3),'linewidth',.1 );
-hold on
-plot3(wp(:,1),wp(:,2),wp(:,3),'.k' );
-hILC = plot3(w2ILC(:,1),w2ILC(:,2),w2ILC(:,3),'m','linewidth',.5 );
+hILC = plot3(w2ILC(:,1),w2ILC(:,2),w2ILC(:,3),'m','linewidth',.2 );
 
 subplot(2,2,3);
 herr = plot(Dt*(1:iters),error,'linewidth',1);
@@ -99,16 +95,9 @@ for i = 1: iters-1
     % determine closest point on trajectory
     [cp,ind]  = closestPt(wp, X(1:3,i));
     %ILC part: change the wp values via a smooth bump to the values.
-    p2c_vector = wp(ind,:)-X(1:3,i)';
-    p2c_list(ind, error_ind(ind,1), :) = p2c_vector;
-
     error(i) = norm( cp - X(1:3,i));
     error_c = error(i);
     error_list(ind,error_ind(ind,1)) = error(i);
-    if ind == 360
-        disp(error_c)
-        disp([p2c_list(350,error_ind(ind,1),1); p2c_list(350,error_ind(ind,1),2); p2c_list(350,error_ind(ind,1),3)]')
-    end
     error_ind(ind)= error_ind(ind)+1; 
     %rangeInfluence = round(rangeInfluence*tanh(error(i)));
     if i<=1000
@@ -134,18 +123,19 @@ for i = 1: iters-1
     if length(error_cpt) >1
     error_d = error_cpt(end-1)-error_cpt(end); %error deriviative
     end
-%     disp(error_d)
+    disp(error_d)
     if (error_ind(ind)-1) ==1
-        learningRate_entro = 0.5;
+        learningRate_direct = 0;
 %     elseif error_d<0
 %         learningRate_direct =1tanh(error_d);
     else
-        learningRate_entro = tanh(error_d);
+        learningRate_direct = tanh(error_d);
     end
-    learningRate = 0.5.*exp(-error_m/T); %simulated annealing
+    learningRate = 2*exp(-error_m/T); %simulated annealing
     %w2ILC(ind,:) = w2ILC(ind,:) + learningRate.*(wp(ind,:)-X(1:3,i)');
-%     error_direct(ind,:) = abs(learningRate_direct).*(error_direct(ind,:)+(1-abs(learningRate_direct)).*(p2c_vector/norm(p2c_vector)))/norm(abs(learningRate_direct).*error_direct(ind,:)+(1-abs(learningRate_direct)).*(p2c_vector/norm(p2c_vector)));
-    w2ILC(ind,:) = w2ILC(ind,:) + (1-learningRate_entro).*learningRate.*p2c_vector;
+    p2c_vector = wp(ind,:)-X(1:3,i)';
+    error_direct(ind,:) = abs(learningRate_direct).*(error_direct(ind,:)+(1-abs(learningRate_direct)).*(p2c_vector/norm(p2c_vector)))/norm(abs(learningRate_direct).*error_direct(ind,:)+(1-abs(learningRate_direct)).*(p2c_vector/norm(p2c_vector)));
+    w2ILC(ind,:) = w2ILC(ind,:) + learningRate.*error_direct(ind,:).*norm(p2c_vector);
 
    
   % comment to turn off ILC

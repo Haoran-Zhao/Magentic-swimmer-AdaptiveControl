@@ -45,8 +45,9 @@ X = repmat(x0, 1,iters); % state
 mg = 50; %mm/s^2
 Dt = 0.02; %seconds
 Kp = 1;
-Kd = 0;
 Ki = 0;
+Kd = 0;
+
 Drag = 0.9;
 Speed  = 100; %mm/s
 %learningRate = 0.25;
@@ -66,20 +67,17 @@ hnear = plot3(wp(1,1),wp(1,2),wp(1,3),'bo','linewidth',1);
 % hILC = plot3(w2ILC(:,1),w2ILC(:,2),w2ILC(:,3),'m','linewidth',.2 );
 axis equal
 htit = title('0');
+control_hist = zeros(size(wp,1),1,3);
 error_p = [0 0 0]';
 error_c = [0 0 0]';
 error_d = NaN;
 error_direct = zeros(size(wp,1),3);
-p2c_list = NaN.*ones(size(wp,1),iters,3);
 error = NaN*ones(iters,1);
 error_h = NaN*ones(iters,1);
 error_list = NaN*ones(size(wp,1),100);
 error_ind = ones(size(wp,1),1);
 subplot(2,2,2);
-plot3(w2(:,1),w2(:,2),w2(:,3),'linewidth',.1 );
-hold on
-plot3(wp(:,1),wp(:,2),wp(:,3),'.k' );
-hILC = plot3(w2ILC(:,1),w2ILC(:,2),w2ILC(:,3),'m','linewidth',.5 );
+hILC = plot3(w2ILC(:,1),w2ILC(:,2),w2ILC(:,3),'m','linewidth',.2 );
 
 subplot(2,2,3);
 herr = plot(Dt*(1:iters),error,'linewidth',1);
@@ -99,16 +97,9 @@ for i = 1: iters-1
     % determine closest point on trajectory
     [cp,ind]  = closestPt(wp, X(1:3,i));
     %ILC part: change the wp values via a smooth bump to the values.
-    p2c_vector = wp(ind,:)-X(1:3,i)';
-    p2c_list(ind, error_ind(ind,1), :) = p2c_vector;
-
+    error_c = cp - X(1:3,i);
     error(i) = norm( cp - X(1:3,i));
-    error_c = error(i);
     error_list(ind,error_ind(ind,1)) = error(i);
-    if ind == 360
-        disp(error_c)
-        disp([p2c_list(350,error_ind(ind,1),1); p2c_list(350,error_ind(ind,1),2); p2c_list(350,error_ind(ind,1),3)]')
-    end
     error_ind(ind)= error_ind(ind)+1; 
     %rangeInfluence = round(rangeInfluence*tanh(error(i)));
     if i<=1000
@@ -131,21 +122,18 @@ for i = 1: iters-1
     T = (iters-i)/iters;
     
     error_cpt = error_list(ind,~isnan(error_list(ind,:))); %closest point error history
-    if length(error_cpt) >1
-    error_d = error_cpt(end-1)-error_cpt(end); %error deriviative
-    end
-%     disp(error_d)
-    if (error_ind(ind)-1) ==1
-        learningRate_entro = 0.5;
-%     elseif error_d<0
+%     if length(error_cpt) >1
+%     error_d = error_cpt(end-1)-error_cpt(end); %error deriviative
+%     end
+    disp(error_d)
+   %     elseif error_d<0
 %         learningRate_direct =1tanh(error_d);
-    else
-        learningRate_entro = tanh(error_d);
-    end
-    learningRate = 0.5.*exp(-error_m/T); %simulated annealing
+
+    learningRate = exp(-error_m/T); %simulated annealing
     %w2ILC(ind,:) = w2ILC(ind,:) + learningRate.*(wp(ind,:)-X(1:3,i)');
-%     error_direct(ind,:) = abs(learningRate_direct).*(error_direct(ind,:)+(1-abs(learningRate_direct)).*(p2c_vector/norm(p2c_vector)))/norm(abs(learningRate_direct).*error_direct(ind,:)+(1-abs(learningRate_direct)).*(p2c_vector/norm(p2c_vector)));
-    w2ILC(ind,:) = w2ILC(ind,:) + (1-learningRate_entro).*learningRate.*p2c_vector;
+    p2c_vector = wp(ind,:)-X(1:3,i)';
+%     error_direct(ind,:) = abs(learningRate_direct).*error_direct(ind,:)+(1-abs(learningRate_direct)).*(p2c_vector/norm(p2c_vector));
+%     w2ILC(ind,:) = w2ILC(ind,:) + learningRate.*error_direct(ind,:).*norm(p2c_vector);
 
    
   % comment to turn off ILC
@@ -167,7 +155,8 @@ for i = 1: iters-1
         vel = X(1:3,i)-X(1:3,i-1);
     end
     
-    control =  Kp*(cp - X(1:3,i)) + Ki*errInt - Kd*vel  +  2*wpDiff/norm(wpDiff);
+    control = [control_hist(ind,1,1);control_hist(ind,1,2);control_hist(ind,1,3)] + Kp * (cp - X(1:3,i)) + Ki * errInt - Kd * (error_c- error_p); % PID type ILC
+    control_hist(ind,1,:) = control ; 
     % controller steers the thrust (only controls the orientation)
     u = Speed*control/norm(control);
     
@@ -192,6 +181,9 @@ for i = 1: iters-1
         set(herr_h,'Ydata',error_h);
         drawnow
     end
+    
+    error_p = error_c;
+    
     if ~mod(iters,1000)==0
         pause(1)
     end
