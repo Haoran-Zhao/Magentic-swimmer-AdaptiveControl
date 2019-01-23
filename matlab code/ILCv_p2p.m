@@ -43,11 +43,11 @@ x0 = [0,0,0,0,0,0]';  %inital conditions: [x,y,z,vx,vy,vz]
 iters = 30000; %control steps
 X = repmat(x0, 1,iters); % state
 
-mg = 50; %mm/s^2
+mg = 30; %mm/s^2
 Dt = 0.02; %seconds
 Kp = 1;
 Kd = 0;
-Ki = 0.01;
+Ki = 0;
 Drag = 0.9;
 Speed  = 100; %mm/s
 %learningRate = 0.25;
@@ -147,10 +147,10 @@ for i = 1: iters-1
     else
         learningRate_entro = tanh(error_d);
     end
-    learningRate = 0.5.*exp(-error_m/T); %simulated annealing
+    learningRate = 2*exp(-error_m/T); %simulated annealing
     %w2ILC(ind,:) = w2ILC(ind,:) + learningRate.*(wp(ind,:)-X(1:3,i)');
 %     error_direct(ind,:) = abs(learningRate_direct).*(error_direct(ind,:)+(1-abs(learningRate_direct)).*(p2c_vector/norm(p2c_vector)))/norm(abs(learningRate_direct).*error_direct(ind,:)+(1-abs(learningRate_direct)).*(p2c_vector/norm(p2c_vector)));
-    w2ILC(ind,:) = w2ILC(ind,:) + (1-learningRate_entro).*learningRate.*p2c_vector;
+    w2ILC(ind,:) = w2ILC(ind,:) + abs(learningRate_entro).*learningRate.*p2c_vector;
 
    
   % comment to turn off ILC
@@ -175,8 +175,8 @@ for i = 1: iters-1
     else
         vel = X(1:3,i)-X(1:3,i-1);
     end
-    
-    control =  Kp*(cp - X(1:3,i)) + Ki*errInt - Kd*vel  +  2*wpDiff/norm(wpDiff);
+    control_cl = Kp*(cp - X(1:3,i)) + Ki*errInt - Kd*vel;
+    control =  control_cl  + 3* wpDiff/norm(wpDiff);
     % controller steers the thrust (only controls the orientation)
     disp(control/norm(control))
     u = Speed*control/norm(control);
@@ -190,7 +190,7 @@ for i = 1: iters-1
         Drag*X(4,i) + Dt*u(1);
         Drag*X(5,i) + Dt*u(2);
         Drag*X(6,i) + Dt*(u(3)-mg)];
-    
+
     %update
     if mod(i,20) ==0
         set( hdirect,  'Xdata', X(1,i),'Ydata',X(2,i),'Zdata',X(3,i),'Udata',0.2*u(1),'Vdata',0.2*u(2),'Wdata',0.2*u(3));
@@ -205,7 +205,7 @@ for i = 1: iters-1
         set(herr_h,'Ydata',error_h);
         drawnow
     end
-pause(0.005)
+% pause(0.005)
 end
 
 

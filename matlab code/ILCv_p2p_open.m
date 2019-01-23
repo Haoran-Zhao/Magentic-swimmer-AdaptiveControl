@@ -38,13 +38,13 @@ w2ILC = wp;
 
 % model: gravity pulls on our 2nd order system.
 x0 = [0,0,0,0,0,0]';  %inital conditions: [x,y,z,vx,vy,vz]
-
+u = [0 0 0];
 iters = 30000; %control steps
 X = repmat(x0, 1,iters); % state
 
 mg = 50; %mm/s^2
 Dt = 0.02; %seconds
-Kp = 1;
+Kp =1;
 Ki = 0;
 Kd = 0;
 
@@ -63,14 +63,17 @@ plot3(wp(:,1),wp(:,2),wp(:,3),'.k' );
 hrpath = plot3(X(1,1),X(2,1),X(3,1),'r','linewidth',1);
 hrobot = plot3(X(1,1),X(2,1),X(3,1),'ro','linewidth',1);
 hnear = plot3(wp(1,1),wp(1,2),wp(1,3),'bo','linewidth',1);
-
+hdirect = quiver3(X(1,1),X(2,1),X(3,1),u(1),u(2),u(3));
 % hILC = plot3(w2ILC(:,1),w2ILC(:,2),w2ILC(:,3),'m','linewidth',.2 );
-axis equal
+
+axis([-40 60 -40 20 -10 60])
+% axis equal
+
 htit = title('0');
 control_hist = zeros(size(wp,1),1,3);
 error_p = [0 0 0]';
 error_c = [0 0 0]';
-error_d = NaN;
+error_d = 0;
 error_direct = zeros(size(wp,1),3);
 error = NaN*ones(iters,1);
 error_h = NaN*ones(iters,1);
@@ -105,7 +108,7 @@ for i = 1: iters-1
     if i<=1000
         error_m = mean(error(1:i));
     else
-       error_m = mean(error(i-999:i)); 
+        error_m = mean(error(i-999:i)); 
     end
     error_h(i) = error_m;
     cp = w2ILC(ind,:)';
@@ -122,9 +125,9 @@ for i = 1: iters-1
     T = (iters-i)/iters;
     
     error_cpt = error_list(ind,~isnan(error_list(ind,:))); %closest point error history
-%     if length(error_cpt) >1
-%     error_d = error_cpt(end-1)-error_cpt(end); %error deriviative
-%     end
+    if length(error_cpt) >1
+    error_d = error_cpt(end-1)-error_cpt(end); %error deriviative
+    end
     disp(error_d)
    %     elseif error_d<0
 %         learningRate_direct =1tanh(error_d);
@@ -147,15 +150,17 @@ for i = 1: iters-1
     wpDiff = w2(ind+1,:)'-w2(ind,:)'; %direction between waypoints
     
     errInt = errInt+ (cp - X(1:3,i)); %integral term
-    
+     
     % deriv term
     if i ==1
         vel = [0;0;0];
     else
         vel = X(1:3,i)-X(1:3,i-1);
     end
-    
-    control = [control_hist(ind,1,1);control_hist(ind,1,2);control_hist(ind,1,3)] + Kp * (cp - X(1:3,i)) + Ki * errInt - Kd * (error_c- error_p); % PID type ILC
+    learningRate_entro = tanh(norm(cp - X(1:3,i)));
+    control_ILC = [control_hist(ind,1,1);control_hist(ind,1,2);control_hist(ind,1,3)] + (1-abs(learningRate_entro)).*(cp - X(1:3,i));
+    control_cl = Kp * (cp - X(1:3,i)) + Ki * errInt - Kd * vel;
+    control = (control_ILC + control_cl)/norm(control_cl+control_ILC) + learningRate.*wpDiff/norm(wpDiff); % PID type ILC
     control_hist(ind,1,:) = control ; 
     % controller steers the thrust (only controls the orientation)
     u = Speed*control/norm(control);
@@ -172,6 +177,7 @@ for i = 1: iters-1
     
     %update
     if mod(i,20) ==0
+        set( hdirect, 'Xdata',X(1,i),'Ydata',X(2,i),'Zdata',X(3,i),'Udata',0.25*u(1),'Vdata',0.25*u(2),'Wdata',0.25*u(3));
         set( hrpath,  'Xdata', X(1,1:i),'Ydata',X(2,1:i),'Zdata',X(3,1:i));
         set( hrobot, 'Xdata',X(1,i),'Ydata',X(2,i),'Zdata',X(3,i));
         set( hnear, 'Xdata',wp(ind,1),'Ydata',wp(ind,2),'Zdata',wp(ind,3));
