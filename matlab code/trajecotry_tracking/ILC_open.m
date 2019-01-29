@@ -4,6 +4,7 @@ clear all
 wp = plotCircle([0 0 0], [0 0 0], 30);
 
 %variables
+rangeInfluence = 5;
 iters = 30000; %control steps
 spacingDist = 0.5; % in mm.  Make smaller to get more points
 var = 0.5; %variance of guassin
@@ -16,7 +17,7 @@ error = NaN*ones(iters,1);
 error_h = NaN*ones(iters,1);
 error_list = NaN*ones(size(wp,1),100);
 error_ind = ones(size(wp,1),1);
-
+control_last = [0; 0; 0];
 % model: gravity pulls on our 2nd order system.
 x0 = [0,0,-40,0,0,0]';  %inital conditions: [x,y,z,vx,vy,vz]
 u = [0 0 0];
@@ -64,13 +65,13 @@ hlead = plot3(wp(1,1),wp(1,2),wp(1,3),'bo','linewidth',1);
 hdirect = quiver3(X(1,1),X(2,1),X(3,1),u(1),u(2),u(3));
 % hILC = plot3(w2ILC(:,1),w2ILC(:,2),w2ILC(:,3),'m','linewidth',.2 );
 
-%axis([-40 40 -40 40 -40 40])
-axis equal
+axis([-40 40 -40 40 -40 40])
+%axis equal
 htit = title('0');
 subplot(2,2,2);
 hILC = plot3(w2ILC(:,1),w2ILC(:,2),w2ILC(:,3),'m','linewidth',.2 );
-axis([-40 40 -40 40 -40 40])
-
+%axis([-40 40 -40 40 -40 40])
+axis equal
 subplot(2,2,3);
 herr = plot(Dt*(1:iters),error,'linewidth',1);
 xlabel('time (s)');ylabel('error (mm)');
@@ -87,47 +88,28 @@ for i = 1: iters-1
     if ind == 0
         ind = size(w2ILC,1);
     end
-    cp = w2ILC(ind,:);
+    lead_pt = wp(ind,:);
     %ILC part: change the wp values via a smooth bump to the values.
-    error_c = cp - X(1:3,i);
+    [cp,ind_cp] = closestPt(wp,X(1:3,i));
+    error_c = lead_pt - X(1:3,i);
     error(i) = norm( cp - X(1:3,i));
-    error_list(ind,error_ind(ind,1)) = error(i);
-    error_ind(ind)= error_ind(ind)+1; 
+%     error_list(ind_cp,error_ind(ind_cp,1)) = error(i);
+%     error_ind(ind_cp)= error_ind(ind_cp)+1; 
     %rangeInfluence = round(rangeInfluence*tanh(error(i)));
-    if i<=1000
+    if i<=125
         error_m = mean(error(1:i));
     else
-        error_m = mean(error(i-999:i)); 
+        error_m = mean(error(i-125:i)); 
     end
     error_h(i) = error_m;
-    cp = w2ILC(ind,:)';
+    
     T = (iters-i)/iters;
-    error_cpt = error_list(ind,~isnan(error_list(ind,:))); %closest point error history
-    if length(error_cpt) >1
-    error_d = error_cpt(end-1)-error_cpt(end); %error deriviative
-    end
+%     error_cpt = error_list(ind_cp,~isnan(error_list(ind_cp,:))); %closest point error history
+%     if length(error_cpt) >1
+%     error_d = error_cpt(end-1)-error_cpt(end); %error deriviative
+%     end
     
-    if (error_ind(ind)-1) ==1
-        learningRate_entro = 0.5;
-    %     elseif error_d<0
-    %         learningRate_direct =1tanh(error_d);
-    else
-        learningRate_entro = tanh(error_d);
-    end
-    
-    learningRate = 2*exp(-error_m/T); %simulated annealing
-    %w2ILC(ind,:) = w2ILC(ind,:) + learningRate.*(wp(ind,:)-X(1:3,i)');
-    p2c_vector = wp(ind,:)-X(1:3,i)';
-    w2ILC(ind,:) = w2ILC(ind,:) + abs(learningRate_entro).*learningRate.*p2c_vector;
-    
-% look ahead
-    ind_ahead = ind+ 1;
-    if ind_ahead >size(wp,1)
-        ind_ahead = ind_ahead-size(wp,1);
-    end
-    
-    wpDiff = cp - X(1:3,i); %direction between waypoints
-    errInt = errInt+ (cp - X(1:3,i)); %integral term
+    errInt = errInt+ (lead_pt' - X(1:3,i)); %integral term
      
     % deriv term
     if i ==1
@@ -135,12 +117,22 @@ for i = 1: iters-1
     else
         vel = X(1:3,i)-X(1:3,i-1);
     end
-    orient = wpDiff/norm(wpDiff);
-    control_cl = Kp*norm(cp - X(1:3,i)) + Ki*norm(errInt) - Kd*norm(vel);
-    control =  control_cl;
+    
+%     learningRate = exp(-error_m/T); %simulated annealing
+
+    p2c_vector = wp(ind,:)-X(1:3,i)';
+    orient = p2c_vector/norm(p2c_vector);
+    learningRate1 = tanh(norm((lead_pt' - X(1:3,i))));
+    learningRate2 = tanh(norm((cp - X(1:3,i))));
+%     control_ILC = [control_hist(ind,1,1);control_hist(ind,1,2);control_hist(ind,1,3)] + learningRate.*(lead_pt' - X(1:3,i));
+    control_ILC = control_last + learningRate1.*(lead_pt' - X(1:3,i))/norm((lead_pt' - X(1:3,i)))+learningRate2.*(cp - X(1:3,i))/norm((cp - X(1:3,i)));
+    control_ILC = control_ILC/norm(control_ILC);
+    control_cl = Kp * (lead_pt' - X(1:3,i)) + Ki * errInt - Kd * vel;
+    control = control_cl+control_ILC; % PID type ILC
+    control_hist(ind,1,:) = control ; 
     % controller steers the thrust (only controls the orientation)
-    disp(control/norm(control))
-    u = thrust*control_cl*orient;
+    u = thrust*(control/norm(control));
+    control_last = control;
     
     
     
