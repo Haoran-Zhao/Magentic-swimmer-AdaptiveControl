@@ -7,7 +7,7 @@ wp = plotCircle([0 0 0], [0 0 0], 30);
 % wp(end,:) = wp(1,:); %loop the trajectory
 %variables
 rangeInfluence = 5;
-iters = 30000; %control steps
+iters = 10000; %control steps
 spacingDist = 0.5; % in mm.  Make smaller to get more points
 var = 0.5; %variance of guassin
 control_hist = zeros(size(wp,1),1,3);
@@ -17,9 +17,12 @@ error_d = 0;
 error_direct = zeros(size(wp,1),3);
 error = NaN*ones(iters,1);
 error_h = NaN*ones(iters,1);
+error_lh = NaN*ones(iters,1);
+error_ch = NaN*ones(iters,1);
 error_list = NaN*ones(size(wp,1),100);
 error_ind = ones(size(wp,1),1);
 control_last = [0; 0; 0];
+orient_last = [0; 0; 0];
 % model: gravity pulls on our 2nd order system.
 x0 = [0,0,-40,0,0,0]';  %inital conditions: [x,y,z,vx,vy,vz]
 u = [0 0 0];
@@ -29,7 +32,7 @@ X(:,1)= x0;
 mg = 50; %N
 Dt = 0.02; %seconds
 Drag = 0.9;
-thrust  = 150; %N
+thrust  = 170; %N
 
 %cl pid term
 Kp =10;
@@ -72,19 +75,51 @@ hdirect = quiver3(X(1,1),X(2,1),X(3,1),u(1),u(2),u(3));
 axis([-40 40 -40 40 -40 40])
 %axis equal
 htit = title('0');
+
 subplot(2,2,2);
-hILC = plot3(w2ILC(:,1),w2ILC(:,2),w2ILC(:,3),'m','linewidth',.2 );
-%axis([-40 40 -40 40 -40 40])
-axis equal
+plot3(w2(:,1),w2(:,2),w2(:,3),'linewidth',.1 );
+hold on
+plot3(wp(:,1),wp(:,2),wp(:,3),'.k' );
+
+% ANIMATE
+hrpath1 = plot3(X(1,1),X(2,1),X(3,1),'r','linewidth',1);
+hrobot1 = plot3(X(1,1),X(2,1),X(3,1),'ro','linewidth',1);
+hlead1 = plot3(wp(1,1),wp(1,2),wp(1,3),'bo','linewidth',1);
+hdirect1 = quiver3(X(1,1),X(2,1),X(3,1),u(1),u(2),u(3));
+% hILC = plot3(w2ILC(:,1),w2ILC(:,2),w2ILC(:,3),'m','linewidth',.2 );
+
+axis([-40 40 -40 40 -40 40])
+%axis equal
+htit1 = title('0');
+view([0 0 1])
+
 subplot(2,2,3);
-herr = plot(Dt*(1:iters),error,'linewidth',1);
-xlabel('time (s)');ylabel('error (mm)');
+plot3(w2(:,1),w2(:,2),w2(:,3),'linewidth',.1 );
+hold on
+plot3(wp(:,1),wp(:,2),wp(:,3),'.k' );
+
+% ANIMATE
+hrpath2 = plot3(X(1,1),X(2,1),X(3,1),'r','linewidth',1);
+hrobot2 = plot3(X(1,1),X(2,1),X(3,1),'ro','linewidth',1);
+hlead2 = plot3(wp(1,1),wp(1,2),wp(1,3),'bo','linewidth',1);
+hdirect2 = quiver3(X(1,1),X(2,1),X(3,1),u(1),u(2),u(3));
+% hILC = plot3(w2ILC(:,1),w2ILC(:,2),w2ILC(:,3),'m','linewidth',.2 );
+
+axis([-40 40 -40 40 -40 40])
+%axis equal
+htit2 = title('0');
+
+view([0 1 0])
 
 subplot(2,2,4);
 herr_h = plot(Dt*(1:iters),error_h,'linewidth',1);
+hold on
+herr_ch = plot(Dt*(1:iters),error_ch,'linewidth',1);
+herr_lh = plot(Dt*(1:iters),error_lh,'linewidth',1);
+
 xlabel('time (s)');ylabel('error_m (mm)');
 %%%%%%%%%%%%%% END PLOTTING
-
+ind_last =1;
 %%%%%%%%%%%%%%Main Loop
 for i = 1: iters-1
     % lead point index
@@ -95,23 +130,37 @@ for i = 1: iters-1
     lead_pt = wp(ind,:);
     %ILC part: change the wp values via a smooth bump to the values.
     [cp,ind_cp] = closestPt(wp,X(1:3,i));
-    error_c = lead_pt - X(1:3,i);
+    error_c = lead_pt' - X(1:3,i);
     error(i) = norm( cp - X(1:3,i));
 %     error_list(ind_cp,error_ind(ind_cp,1)) = error(i);
 %     error_ind(ind_cp)= error_ind(ind_cp)+1; 
     %rangeInfluence = round(rangeInfluence*tanh(error(i)));
-    if i<=125
+    if i<=55
         error_m = mean(error(1:i));
     else
-        error_m = mean(error(i-125:i)); 
+        error_m = mean(error(i-55:i)); 
     end
-    error_h(i) = error_m;
     
+    error_h(i) = error_m;
+    error_ch(i) = error(i);
+    error_lh(i) = norm(wp(ind_last,:)'-X(1:3,i));
+    ind_last = ind;
     T = (iters-i)/iters;
 %     error_cpt = error_list(ind_cp,~isnan(error_list(ind_cp,:))); %closest point error history
 %     if length(error_cpt) >1
 %     error_d = error_cpt(end-1)-error_cpt(end); %error deriviative
 %     end
+    % look ahead
+    ind = ind+ 1;
+    if ind>size(wp,1)
+        ind = ind-size(wp,1);
+    end
+    
+    if ind == size(wp,1)
+        wpDiff = w2ILC(1,:)'-w2ILC(ind,:)';
+    else
+        wpDiff = w2ILC(ind+1,:)'-w2ILC(ind,:)'; %direction between waypoints
+    end
     
     errInt = errInt+ (lead_pt' - X(1:3,i)); %integral term
      
@@ -122,23 +171,11 @@ for i = 1: iters-1
         vel = X(1:3,i)-X(1:3,i-1);
     end
     
-%     learningRate = exp(-error_m/T); %simulated annealing
-
-    p2l_vector = wp(ind,:)-X(1:3,i)';
-    orient = p2l_vector/norm(p2l_vector);
-    learningRate1 = tanh(norm((lead_pt' - X(1:3,i))));
-    learningRate2 = tanh(norm((cp - X(1:3,i))));
-%     control_ILC = [control_hist(ind,1,1);control_hist(ind,1,2);control_hist(ind,1,3)] + learningRate.*(lead_pt' - X(1:3,i));
-    control_ILC = control_last + learningRate1.*(lead_pt' - X(1:3,i))/norm((lead_pt' - X(1:3,i)))+learningRate2.*(cp - X(1:3,i))/norm((cp - X(1:3,i)));
-    control_ILC = control_ILC/norm(control_ILC);
-    control_cl = Kp * (lead_pt' - X(1:3,i)) + Ki * errInt - Kd * vel;
-    control = control_ILC; % PID type ILC
-    control_hist(ind,1,:) = control ; 
+    control_cl = Kp*(cp - X(1:3,i)) + Ki*errInt - Kd*vel;
+    control =  control_cl  + 2.*wpDiff/norm(wpDiff);
     % controller steers the thrust (only controls the orientation)
-    u = thrust*(control/norm(control));
-    disp(u)
-    control_last = control;
-    
+    disp(control/norm(control))
+    u = thrust*control/norm(control);
     
     
     X(:,i+1) = [ ...
@@ -155,10 +192,24 @@ for i = 1: iters-1
         set( hrpath,  'Xdata', X(1,1:i),'Ydata',X(2,1:i),'Zdata',X(3,1:i));
         set( hrobot, 'Xdata',X(1,i),'Ydata',X(2,i),'Zdata',X(3,i));
         set( hlead, 'Xdata',wp(ind,1),'Ydata',wp(ind,2),'Zdata',wp(ind,3));
-        set( hILC, 'Xdata',[w2ILC(:,1);w2ILC(1,1)],'Ydata',[w2ILC(:,2);w2ILC(1,2)],'Zdata',[w2ILC(:,3);w2ILC(1,3)] );
+        set( hdirect1, 'Xdata',X(1,i),'Ydata',X(2,i),'Zdata',X(3,i),'Udata',0.25*u(1),'Vdata',0.25*u(2),'Wdata',0.25*u(3));
+        set( hrpath1,  'Xdata', X(1,1:i),'Ydata',X(2,1:i),'Zdata',X(3,1:i));
+        set( hrobot1, 'Xdata',X(1,i),'Ydata',X(2,i),'Zdata',X(3,i));
+        set( hlead1, 'Xdata',wp(ind,1),'Ydata',wp(ind,2),'Zdata',wp(ind,3));
+        set( hdirect2, 'Xdata',X(1,i),'Ydata',X(2,i),'Zdata',X(3,i),'Udata',0.25*u(1),'Vdata',0.25*u(2),'Wdata',0.25*u(3));
+        set( hrpath2,  'Xdata', X(1,1:i),'Ydata',X(2,1:i),'Zdata',X(3,1:i));
+        set( hrobot2, 'Xdata',X(1,i),'Ydata',X(2,i),'Zdata',X(3,i));
+        set( hlead2, 'Xdata',wp(ind,1),'Ydata',wp(ind,2),'Zdata',wp(ind,3));
+%         set( hILC, 'Xdata',[w2ILC(:,1);w2ILC(1,1)],'Ydata',[w2ILC(:,2);w2ILC(1,2)],'Zdata',[w2ILC(:,3);w2ILC(1,3)] );
         set(htit,'String',num2str(i));
-        set(herr,'Ydata',error);
+        set(htit1,'String',num2str(i));
+        set(htit2,'String',num2str(i));
+        
+%         set(herr,'Ydata',error);
         set(herr_h,'Ydata',error_h);
+        set(herr_ch,'Ydata',error_ch);
+        set(herr_lh,'Ydata',error_lh);
+
         drawnow
     end
     
