@@ -6,15 +6,14 @@ wp = plotCircle([0 0 0], [0 0 0], 30);
 % wp = [wp(:,3),wp(:,1),wp(:,2)];
 % wp(end,:) = wp(1,:); %loop the trajectory
 %variables
-rangeInfluence = 5;
-iters = 10000; %control steps
+ind_last =1;
+iters = 5000; %control steps
 spacingDist = 0.5; % in mm.  Make smaller to get more points
 var = 0.5; %variance of guassin
 control_hist = zeros(size(wp,1),1,3);
 error_p = [0 0 0]';
 error_c = [0 0 0]';
 error_d = 0;
-error_direct = zeros(size(wp,1),3);
 error = NaN*ones(iters,1);
 error_h = NaN*ones(iters,1);
 error_lh = NaN*ones(iters,1);
@@ -119,106 +118,13 @@ herr_lh = plot(Dt*(1:iters),error_lh,'linewidth',1);
 
 xlabel('time (s)');ylabel('error_m (mm)');
 %%%%%%%%%%%%%% END PLOTTING
-ind_last =1;
-%%%%%%%%%%%%%%Main Loop
-for i = 1: iters-1
-    % lead point index
-    ind = mod(i+5, size(wp,1));
-    if ind == 0
-        ind = size(wp,1);
-    end
-    lead_pt = wp(ind,:);
-    %ILC part: change the wp values via a smooth bump to the values.
-    [cp,ind_cp] = closestPt(wp,X(1:3,i));
-    error_c = lead_pt' - X(1:3,i);
-    error(i) = norm( cp - X(1:3,i));
-%     error_list(ind_cp,error_ind(ind_cp,1)) = error(i);
-%     error_ind(ind_cp)= error_ind(ind_cp)+1; 
-    %rangeInfluence = round(rangeInfluence*tanh(error(i)));
-    if i<=55
-        error_m = mean(error(1:i));
-    else
-        error_m = mean(error(i-55:i)); 
-    end
-    
-    error_h(i) = error_m;
-    error_ch(i) = error(i);
-    error_lh(i) = norm(wp(ind_last,:)'-X(1:3,i));
-    ind_last = ind;
-    T = (iters-i)/iters;
-%     error_cpt = error_list(ind_cp,~isnan(error_list(ind_cp,:))); %closest point error history
-%     if length(error_cpt) >1
-%     error_d = error_cpt(end-1)-error_cpt(end); %error deriviative
-%     end
-    % look ahead
-    ind = ind+ 1;
-    if ind>size(wp,1)
-        ind = ind-size(wp,1);
-    end
-    
-    if ind == size(wp,1)
-        wpDiff = w2ILC(1,:)'-w2ILC(ind,:)';
-    else
-        wpDiff = w2ILC(ind+1,:)'-w2ILC(ind,:)'; %direction between waypoints
-    end
-    
-    errInt = errInt+ (lead_pt' - X(1:3,i)); %integral term
-     
-    % deriv term
-    if i ==1
-        vel = [0;0;0];
-    else
-        vel = X(1:3,i)-X(1:3,i-1);
-    end
-    
-    control_cl = Kp*(cp - X(1:3,i)) + Ki*errInt - Kd*vel;
-    control =  control_cl  + 2.*wpDiff/norm(wpDiff);
-    % controller steers the thrust (only controls the orientation)
-    disp(control/norm(control))
-    u = thrust*control/norm(control);
-    
-    
-    X(:,i+1) = [ ...
-        X(1,i) + Drag*Dt*X(4,i) + 1/2*Dt*Dt*u(1);
-        X(2,i) + Drag*Dt*X(5,i) + 1/2*Dt*Dt*u(2);
-        X(3,i) + Drag*Dt*X(6,i) + 1/2*Dt*Dt*(u(3)-mg);
-        Drag*X(4,i) + Dt*u(1);
-        Drag*X(5,i) + Dt*u(2);
-        Drag*X(6,i) + Dt*(u(3)-mg)];
-    
-    %update
-    if mod(i,20) ==0
-        set( hdirect, 'Xdata',X(1,i),'Ydata',X(2,i),'Zdata',X(3,i),'Udata',0.25*u(1),'Vdata',0.25*u(2),'Wdata',0.25*u(3));
-        set( hrpath,  'Xdata', X(1,1:i),'Ydata',X(2,1:i),'Zdata',X(3,1:i));
-        set( hrobot, 'Xdata',X(1,i),'Ydata',X(2,i),'Zdata',X(3,i));
-        set( hlead, 'Xdata',wp(ind,1),'Ydata',wp(ind,2),'Zdata',wp(ind,3));
-        set( hdirect1, 'Xdata',X(1,i),'Ydata',X(2,i),'Zdata',X(3,i),'Udata',0.25*u(1),'Vdata',0.25*u(2),'Wdata',0.25*u(3));
-        set( hrpath1,  'Xdata', X(1,1:i),'Ydata',X(2,1:i),'Zdata',X(3,1:i));
-        set( hrobot1, 'Xdata',X(1,i),'Ydata',X(2,i),'Zdata',X(3,i));
-        set( hlead1, 'Xdata',wp(ind,1),'Ydata',wp(ind,2),'Zdata',wp(ind,3));
-        set( hdirect2, 'Xdata',X(1,i),'Ydata',X(2,i),'Zdata',X(3,i),'Udata',0.25*u(1),'Vdata',0.25*u(2),'Wdata',0.25*u(3));
-        set( hrpath2,  'Xdata', X(1,1:i),'Ydata',X(2,1:i),'Zdata',X(3,1:i));
-        set( hrobot2, 'Xdata',X(1,i),'Ydata',X(2,i),'Zdata',X(3,i));
-        set( hlead2, 'Xdata',wp(ind,1),'Ydata',wp(ind,2),'Zdata',wp(ind,3));
-%         set( hILC, 'Xdata',[w2ILC(:,1);w2ILC(1,1)],'Ydata',[w2ILC(:,2);w2ILC(1,2)],'Zdata',[w2ILC(:,3);w2ILC(1,3)] );
-        set(htit,'String',num2str(i));
-        set(htit1,'String',num2str(i));
-        set(htit2,'String',num2str(i));
-        
-%         set(herr,'Ydata',error);
-        set(herr_h,'Ydata',error_h);
-        set(herr_ch,'Ydata',error_ch);
-        set(herr_lh,'Ydata',error_lh);
 
-        drawnow
-    end
-    
-    error_p = error_c;
-    
-    if ~mod(iters,1000)==0
-        pause(1)
-    end
-end
+%%%%%%%%%%%%%%Main Loop
+
+
+
+
+
 
 %%%%%%%%%%%%%%functions
 function points = plotCircle(center,normal,radius)
